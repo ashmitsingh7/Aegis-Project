@@ -6,7 +6,8 @@ Integrates health prediction, RUL estimation, risk assessment, decision optimiza
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+import math
 import uvicorn
 import logging
 import pandas as pd
@@ -57,13 +58,105 @@ transformer_simulator = create_enhanced_transformer_simulator(
 class TelemetryData(BaseModel):
     asset_id: str = "T-01"
     load_percent: float
-    voltage_kv: Optional[float] = 23.0
-    current_a: Optional[float] = None
+    voltage_kv: float = 23.0
+    current_a: float = 188.0
     ambient_temp_c: float
-    oil_temp_c: Optional[float] = None
-    winding_temp_c: Optional[float] = None
+    oil_temp_c: float = 50.0
+    winding_temp_c: float = 70.0
     vibration_mm_s: float = 1.0
-    operating_hours: Optional[float] = 0.0
+    operating_hours: float = 0.0
+
+
+class Asset(BaseModel):
+    """Asset registry entry with default telemetry configuration"""
+    asset_id: str
+    name: str
+    site: str
+    transformer_type: str = "Power Transformer"
+    rating_mva: float = 10.0
+    voltage_rating_kv: float = 23.0
+    # Default telemetry values (used when real-time data unavailable)
+    default_telemetry: TelemetryData = TelemetryData(
+        asset_id="",
+        load_percent=75.0,
+        ambient_temp_c=30.0,
+        vibration_mm_s=1.5,
+        operating_hours=8760 * 5
+    )
+
+
+# Hardcoded asset registry (in production, this would come from a database)
+ASSET_REGISTRY: Dict[str, Asset] = {
+    "T-01": Asset(
+        asset_id="T-01",
+        name="Main Substation Transformer",
+        site="Main Substation",
+        rating_mva=10.0,
+        voltage_rating_kv=23.0,
+        default_telemetry=TelemetryData(
+            asset_id="T-01",
+            load_percent=75.0,
+            voltage_kv=23.0,
+            current_a=188.0,
+            ambient_temp_c=30.0,
+            oil_temp_c=50.0,
+            winding_temp_c=70.0,
+            vibration_mm_s=1.5,
+            operating_hours=8760 * 5
+        )
+    ),
+    "T-02": Asset(
+        asset_id="T-02",
+        name="Backup Transformer",
+        site="East Substation",
+        rating_mva=15.0,
+        voltage_rating_kv=34.5,
+        default_telemetry=TelemetryData(
+            asset_id="T-02",
+            load_percent=60.0,
+            voltage_kv=34.5,
+            current_a=251.0,
+            ambient_temp_c=25.0,
+            oil_temp_c=45.0,
+            winding_temp_c=60.0,
+            vibration_mm_s=1.2,
+            operating_hours=8760 * 3
+        )
+    ),
+    "T-03": Asset(
+        asset_id="T-03",
+        name="Distribution Transformer",
+        site="West Industrial Park",
+        rating_mva=5.0,
+        voltage_rating_kv=13.8,
+        default_telemetry=TelemetryData(
+            asset_id="T-03",
+            load_percent=80.0,
+            voltage_kv=13.8,
+            current_a=209.0,
+            ambient_temp_c=35.0,
+            oil_temp_c=55.0,
+            winding_temp_c=75.0,
+            vibration_mm_s=2.0,
+            operating_hours=8760 * 8
+        )
+    ),
+}
+
+
+def get_asset(asset_id: str) -> Asset:
+    """Get asset from registry, raise 404 if not found"""
+    if asset_id not in ASSET_REGISTRY:
+        raise HTTPException(status_code=404, detail=f"Asset {asset_id} not found")
+    return ASSET_REGISTRY[asset_id]
+
+
+def get_asset_default_telemetry(asset_id: str) -> TelemetryData:
+    """Get default telemetry for asset, using defaults if real-time unavailable"""
+    asset = get_asset(asset_id)
+    telemetry = asset.default_telemetry.model_copy()
+    telemetry.asset_id = asset_id
+    return telemetry
 
 class SimulationRequest(BaseModel):
     load_percent: float
@@ -213,6 +306,15 @@ class SummaryResponse(BaseModel):
     timestamp: str
 
 
+# Rebuild models to resolve forward references (Pydantic v2)
+HealthResponse.model_rebuild()
+RULResponse.model_rebuild()
+RiskResponse.model_rebuild()
+DecisionResponse.model_rebuild()
+SimulationResponse.model_rebuild()
+SummaryResponse.model_rebuild()
+
+
 # API Endpoints
 @app.get("/")
 async def root():
@@ -242,6 +344,39 @@ async def health_check():
     }
 
 
+@app.get("/assets")
+async def list_assets():
+    """List all available assets"""
+    return {
+        "assets": [
+            {
+                "asset_id": asset.asset_id,
+                "name": asset.name,
+                "site": asset.site,
+                "transformer_type": asset.transformer_type,
+                "rating_mva": asset.rating_mva,
+                "voltage_rating_kv": asset.voltage_rating_kv,
+            }
+            for asset in ASSET_REGISTRY.values()
+        ]
+    }
+
+
+@app.get("/assets/{asset_id}")
+async def get_asset_info(asset_id: str):
+    """Get detailed asset information"""
+    asset = get_asset(asset_id)
+    return {
+        "asset_id": asset.asset_id,
+        "name": asset.name,
+        "site": asset.site,
+        "transformer_type": asset.transformer_type,
+        "rating_mva": asset.rating_mva,
+        "voltage_rating_kv": asset.voltage_rating_kv,
+        "default_telemetry": asset.default_telemetry.model_dump()
+    }
+
+
 @app.post("/assets/{asset_id}/health", response_model=HealthResponse)
 async def get_asset_health(asset_id: str, telemetry: TelemetryData):
     """
@@ -253,7 +388,7 @@ async def get_asset_health(asset_id: str, telemetry: TelemetryData):
         telemetry.asset_id = asset_id
 
         # Get health assessment
-        health_result = health_model.predict_health(telemetry.dict())
+        health_result = health_model.predict_health(telemetry.model_dump())
 
         return HealthResponse(**health_result)
 
@@ -273,10 +408,10 @@ async def get_asset_rul(asset_id: str, telemetry: TelemetryData):
         telemetry.asset_id = asset_id
 
         # Get health assessment first (needed for RUL prediction)
-        health_result = health_model.predict_health(telemetry.dict())
+        health_result = health_model.predict_health(telemetry.model_dump())
 
         # Get RUL prediction
-        rul_result = rul_model.predict_rul(telemetry.dict(), health_result)
+        rul_result = rul_model.predict_rul(telemetry.model_dump(), health_result)
 
         return RULResponse(**rul_result)
 
@@ -296,12 +431,12 @@ async def get_asset_risk(asset_id: str, telemetry: TelemetryData):
         telemetry.asset_id = asset_id
 
         # Get supporting assessments
-        health_result = health_model.predict_health(telemetry.dict())
-        rul_result = rul_model.predict_rul(telemetry.dict(), health_result)
+        health_result = health_model.predict_health(telemetry.model_dump())
+        rul_result = rul_model.predict_rul(telemetry.model_dump(), health_result)
 
         # Get risk assessment
         risk_result = risk_model.assess_comprehensive_risk(
-            telemetry.dict(), health_result, rul_result
+            telemetry.model_dump(), health_result, rul_result
         )
 
         return RiskResponse(**risk_result)
@@ -322,10 +457,10 @@ async def get_asset_decision(asset_id: str, telemetry: TelemetryData):
         telemetry.asset_id = asset_id
 
         # Get supporting assessments
-        health_result = health_model.predict_health(telemetry.dict())
-        rul_result = rul_model.predict_rul(telemetry.dict(), health_result)
+        health_result = health_model.predict_health(telemetry.model_dump())
+        rul_result = rul_model.predict_rul(telemetry.model_dump(), health_result)
         risk_result = risk_model.assess_comprehensive_risk(
-            telemetry.dict(), health_result, rul_result
+            telemetry.model_dump(), health_result, rul_result
         )
 
         # Get digital twin simulation for what-if analysis
@@ -343,11 +478,11 @@ async def get_asset_decision(asset_id: str, telemetry: TelemetryData):
         )
 
         # Run baseline simulation
-        simulation_result = transformer_simulator.simulate_enhanced(**sim_request.dict())
+        simulation_result = transformer_simulator.simulate_enhanced(**sim_request.model_dump())
 
         # Get decision recommendation
         decision_result = decision_optimizer.evaluate_interventions(
-            telemetry.dict(), health_result, rul_result, risk_result, simulation_result
+            telemetry.model_dump(), health_result, rul_result, risk_result, simulation_result
         )
 
         return DecisionResponse(**decision_result)
@@ -366,8 +501,7 @@ async def simulate_asset(asset_id: str, simulation_request: SimulationRequest):
     try:
         # Run the enhanced transformer simulation
         simulation_result = transformer_simulator.simulate_enhanced(
-            asset_id=asset_id,
-            **simulation_request.dict()
+            **simulation_request.model_dump()
         )
 
         return SimulationResponse(**simulation_result)
@@ -384,24 +518,17 @@ async def get_asset_summary(asset_id: str):
     Combines health, RUL, risk, decision, and simulation data
     """
     try:
-        # Create default telemetry for summary (in real system, this would come from live data)
-        default_telemetry = TelemetryData(
-            asset_id=asset_id,
-            load_percent=75.0,
-            voltage_kv=23.0,
-            current_a=188.0,
-            ambient_temp_c=30.0,
-            oil_temp_c=50.0,
-            winding_temp_c=70.0,
-            vibration_mm_s=1.5,
-            operating_hours=8760 * 5  # 5 years
-        )
+        # Get asset from registry (validates asset exists)
+        asset = get_asset(asset_id)
+        
+        # Get default telemetry from asset registry
+        default_telemetry = get_asset_default_telemetry(asset_id)
 
         # Get all assessments
-        health_result = health_model.predict_health(default_telemetry.dict())
-        rul_result = rul_model.predict_rul(default_telemetry.dict(), health_result)
+        health_result = health_model.predict_health(default_telemetry.model_dump())
+        rul_result = rul_model.predict_rul(default_telemetry.model_dump(), health_result)
         risk_result = risk_model.assess_comprehensive_risk(
-            default_telemetry.dict(), health_result, rul_result
+            default_telemetry.model_dump(), health_result, rul_result
         )
 
         # Run simulation for summary
@@ -416,11 +543,11 @@ async def get_asset_summary(asset_id: str):
             symmetry_imbalance_percent=0.0,
             partial_discharge_detected=False
         )
-        simulation_result = transformer_simulator.simulate_enhanced(**sim_request.dict())
+        simulation_result = transformer_simulator.simulate_enhanced(**sim_request.model_dump())
 
         # Get decision recommendation
         decision_result = decision_optimizer.evaluate_interventions(
-            default_telemetry.dict(), health_result, rul_result, risk_result, simulation_result
+            default_telemetry.model_dump(), health_result, rul_result, risk_result, simulation_result
         )
 
         # Combine all results
@@ -436,6 +563,8 @@ async def get_asset_summary(asset_id: str):
 
         return SummaryResponse(**summary_result)
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in asset summary: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -448,8 +577,19 @@ async def get_asset_telemetry(asset_id: str):
     Returns historical telemetry for trending and analysis
     """
     try:
+        # Get asset from registry (validates asset exists)
+        asset = get_asset(asset_id)
+        
+        # Get base telemetry from asset registry
+        base_telemetry = get_asset_default_telemetry(asset_id)
+        base_load = base_telemetry.load_percent
+        base_ambient = base_telemetry.ambient_temp_c
+        base_vibration = base_telemetry.vibration_mm_s
+        base_voltage = asset.voltage_rating_kv
+        base_hours = base_telemetry.operating_hours or 0
+
         # In a real implementation, this would query a time-series database
-        # For demo, return mock recent telemetry data
+        # For demo, return mock recent telemetry data based on asset defaults
 
         # Generate some realistic telemetry history
         import random
@@ -466,27 +606,26 @@ async def get_asset_telemetry(asset_id: str):
             load_factor = 0.7 + 0.3 * math.sin((hour_of_day - 6) * math.pi / 12)  # Peak at 2PM
             load_factor = max(0.3, min(1.2, load_factor))  # Clamp to reasonable range
 
-            base_load = 70.0
             load_percent = base_load * load_factor
 
             # Temperature correlates with load
-            base_temp = 25.0
-            temp_rise = (load_percent - 50) * 0.3  # Rough approximation
+            base_temp = base_ambient
+            temp_rise = (load_percent - base_load) * 0.3  # Rough approximation
             ambient_temp = base_temp + temp_rise * 0.6
-            oil_temp = ambient_temp + 20 + (load_percent - 50) * 0.2
-            winding_temp = oil_temp + 15 + (load_percent - 50) * 0.15
+            oil_temp = ambient_temp + 20 + (load_percent - base_load) * 0.2
+            winding_temp = oil_temp + 15 + (load_percent - base_load) * 0.15
 
             telemetry_data.append({
                 "timestamp": timestamp.isoformat(),
                 "asset_id": asset_id,
                 "load_percent": round(load_percent, 1),
-                "voltage_kv": round(23.0 + random.uniform(-0.5, 0.5), 1),
-                "current_a": round((load_percent / 100.0) * 188, 1),
+                "voltage_kv": round(base_voltage + random.uniform(-0.5, 0.5), 1),
+                "current_a": round((load_percent / 100.0) * (asset.rating_mva * 1000 / (math.sqrt(3) * base_voltage)), 1),
                 "ambient_temp_c": round(ambient_temp, 1),
                 "oil_temp_c": round(oil_temp, 1),
                 "winding_temp_c": round(winding_temp, 1),
-                "vibration_mm_s": round(1.0 + random.uniform(-0.2, 0.5), 1),
-                "operating_hours": 8760 * 5 + i  # Incrementally increasing
+                "vibration_mm_s": round(base_vibration + random.uniform(-0.2, 0.5), 1),
+                "operating_hours": base_hours + i  # Incrementally increasing
             })
 
         return {
@@ -499,6 +638,8 @@ async def get_asset_telemetry(asset_id: str):
             }
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error retrieving telemetry: {e}")
         raise HTTPException(status_code=500, detail=str(e))

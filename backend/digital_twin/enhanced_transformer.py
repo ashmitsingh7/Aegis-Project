@@ -834,7 +834,7 @@ class EnhancedTransformerSimulator:
             },
             'harmonic_loss_factors': {
                 'no_load': round(losses['harmonic_loss_factor_no_load'], 3),
-                'load': round(losses['harmonic_factor_load'], 3)
+                'load': round(losses['harmonic_loss_factor_load'], 3)
             },
 
             # === TEMPERATURES (°C) ===

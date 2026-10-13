@@ -1,349 +1,356 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { apiService } from '@/lib/apiService';
+import type { HealthResponse, DecisionResponse, RULResponse, RiskResponse, SimulationResponse, SummaryResponse, AssetInfo } from '@/types/api';
+import HealthGauge from '@/components/visualizations/HealthGauge';
+import TelemetryTrendsChart from '@/components/visualizations/TelemetryTrendsChart';
+import RadialProgressBar from '@/components/visualizations/RadialProgressBar';
+import RiskFactorsChart from '@/components/visualizations/RiskFactorsChart';
 
 export default function Home() {
-  const [apiData, setApiData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [assetData, setAssetData] = useState<any>(null);
+  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [assets, setAssets] = useState<AssetInfo[]>([]);
+  const [selectedAssetId, setSelectedAssetId] = useState<string>('T-01');
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchAssets = async () => {
+      try {
+        const result = await apiService.getAssets();
+        setAssets(result.assets);
+        if (result.assets.length > 0 && !selectedAssetId) {
+          setSelectedAssetId(result.assets[0].asset_id);
+        }
+      } catch (err) {
+        console.error('Failed to fetch assets:', err);
+        setError('Failed to load asset list.');
+      }
+    };
+    fetchAssets();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedAssetId) return;
+    
+    const fetchAssetData = async () => {
       try {
         setLoading(true);
-        // Fetch summary data from backend API
-        const response = await fetch('http://localhost:8000/assets/T-01/summary');
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-        setApiData(data);
-        setLoading(false);
+        setError(null);
+
+        // Fetch comprehensive asset summary
+        const summary = await apiService.getAssetSummary(selectedAssetId);
+
+        // Transform the data to match the existing UI structure
+        const transformedData = {
+          assetId: summary.asset_id,
+          name: summary.health.asset_id, // Will be overridden by asset info
+          site: 'Substation',
+          healthScore: Math.round(summary.health.health_score),
+          failureProbability: Math.round(summary.health.failure_probability),
+          rulDays: Math.round(summary.rul.rul_days),
+          riskLevel: summary.risk.overall_risk_level,
+          degradation: summary.health.degradation_type.replace('_', ' '),
+          load: Math.round(summary.simulation.load_percent),
+          windingTemp: Math.round(summary.simulation.winding_temp_c),
+          voltage: Math.round(summary.simulation.actual_voltage_kv * 10),
+          current: Math.round(summary.simulation.actual_current_a),
+          efficiency: Math.round(summary.simulation.efficiency_percent),
+          losses: parseFloat(summary.simulation.total_losses_kw.toFixed(2)),
+          recommendation: summary.decision.recommended_intervention.replace('_', ' ').toLowerCase(),
+          recommendedScore: Math.round(summary.decision.optimal_intervention_score),
+          cost: Math.round(summary.decision.assessment_details?.cost || 7500),
+          lifeImpact: Math.round(summary.decision.assessment_details?.lifeImpact || 8),
+          reasoning: summary.decision.explanation || [
+            'High transformer loading',
+            'Elevated winding temperature',
+            'Load reduction significantly lowers thermal risk',
+          ],
+        };
+
+        setAssetData(transformedData);
       } catch (err) {
-        setError(err.message);
+        console.error('Failed to fetch asset data:', err);
+        setError('Failed to load asset data. Using fallback data.');
+
+        // Fallback to static data if API call fails
+        setAssetData({
+          assetId: selectedAssetId,
+          name: 'Power Transformer',
+          site: 'Main Substation Transformer',
+          healthScore: 67,
+          failureProbability: 31,
+          rulDays: 41,
+          riskLevel: 'HIGH',
+          degradation: 'Thermal stress',
+          load: 89,
+          windingTemp: 84,
+          voltage: 228.5,
+          current: 156.8,
+          efficiency: 99.9,
+          losses: 0.22,
+          recommendation: 'Reduce load',
+          recommendedScore: 31,
+          cost: 7500,
+          lifeImpact: 8,
+          reasoning: [
+            'High transformer loading',
+            'Elevated winding temperature',
+            'Load reduction significantly lowers thermal risk',
+          ],
+        });
+      } finally {
         setLoading(false);
-        console.error('Fetch error:', err);
       }
     };
 
-    fetchData();
-  }, []);
+    fetchAssetData();
+  }, [selectedAssetId]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
-        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500"></div>
-        <p className="mt-4 text-lg text-gray-600">Loading Aegis Platform...</p>
-      </div>
-    );
+  // Handle case where data is still loading or there was an error
+  const asset = assetData || {
+    assetId: selectedAssetId,
+    name: 'Power Transformer',
+    site: 'Main Substation Transformer',
+    healthScore: 67,
+    failureProbability: 31,
+    rulDays: 41,
+    riskLevel: 'HIGH',
+    degradation: 'Thermal stress',
+    load: 89,
+    windingTemp: 84,
+    voltage: 228.5,
+    current: 156.8,
+    efficiency: 99.9,
+    losses: 0.22,
+    recommendation: 'Reduce load',
+    recommendedScore: 31,
+    cost: 7500,
+    lifeImpact: 8,
+    reasoning: [
+      'High transformer loading',
+      'Elevated winding temperature',
+      'Load reduction significantly lowers thermal risk',
+    ],
+  };
+
+  // Find selected asset info
+  const selectedAsset = assets.find(a => a.asset_id === selectedAssetId);
+
+  function RiskBadge({ value }: { value: string }) {
+    const classes =
+      value === 'LOW'
+        ? 'bg-green-100 text-green-800'
+        : value === 'MEDIUM'
+          ? 'bg-yellow-100 text-yellow-800'
+          : 'bg-red-100 text-red-800';
+
+    return <span className={`rounded-full px-3 py-1 text-xs font-semibold ${classes}`}>{value}</span>;
   }
 
-  if (error) {
+  function MetricCard({ label, value }: { label: string; value: string }) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
-        <h1 className="text-2xl font-bold text-red-600 mb-4">Error Loading Platform</h1>
-        <p className="text-gray-600 mb-6">{error}</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded"
-        >
-          Retry
-        </button>
-      </div>
-    );
-  }
-
-  if (!apiData) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
-        <h1 className="text-2xl font-bold text-gray-600 mb-4">No Data Available</h1>
-        <p className="text-gray-600">Waiting for backend data...</p>
+      <div className="rounded-lg bg-white p-5 shadow">
+        <p className="text-sm text-gray-500">{label}</p>
+        <p className="mt-2 text-2xl font-bold text-gray-900">{value}</p>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <h1 className="text-3xl font-bold text-gray-800">
-            Aegis - AI-Powered Decision Intelligence Platform
-          </h1>
-          <p className="mt-2 text-gray-600">
-            Monitoring Transformer T-01 • Last updated: {new Date(apiData.timestamp).toLocaleString()}
-          </p>
+      <header className="bg-white shadow-sm">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">Aegis Command Center</h1>
+            <p className="text-sm text-gray-500">Asset intelligence for critical electrical infrastructure</p>
+          </div>
+          <nav className="flex gap-3 text-sm">
+            <Link className="font-medium text-blue-700" href="/">Dashboard</Link>
+            <Link className="text-gray-600 hover:text-gray-900" href="/demo">Demo</Link>
+            <Link className="text-gray-600 hover:text-gray-900" href="/decision">Decision</Link>
+            <Link className="text-gray-600 hover:text-gray-900" href="/simulation">Simulation</Link>
+            <Link className="text-gray-600 hover:text-gray-900" href="/analytics">Analytics</Link>
+          </nav>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Status Overview */}
-        <div className="grid gap-6 mb-8">
-          <div className="grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {/* Health Status */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-lg font-semibold text-gray-800 mb-4">Asset Health</h2>
-              <div className="flex items-center space-x-4">
-                <div className="w-14 h-14 rounded-lg bg-green-100 flex items-center justify-center">
-                  <span className="text-green-600 font-bold text-2xl">
-                    {Math.round(apiData.health.health_score)}%
-                  </span>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Health Score</p>
-                  <p className="text-xl font-bold text-gray-900">
-                    {apiData.health.health_score.toFixed(1)}/100
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {getHealthStatus(apiData.health.health_score)}
-                  </p>
-                </div>
-              </div>
-            </div>
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        {/* Asset Selector */}
+        {assets.length > 0 && (
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Select Asset</label>
+            <select
+              value={selectedAssetId}
+              onChange={e => setSelectedAssetId(e.target.value)}
+              className="w-full md:w-1/3 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              {assets.map(asset => (
+                <option key={asset.asset_id} value={asset.asset_id}>
+                  {asset.asset_id} - {asset.name} ({asset.site})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
-            {/* Risk Level */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-lg font-semibold text-gray-800 mb-4">Risk Assessment</h2>
-              <div className="flex items-center space-x-4">
-                <div className="w-14 h-14 rounded-lg
-                  {getRiskLevelColor(apiData.risk.overall_risk_level)}
-                  flex items-center justify-center">
-                  <span className="text-white font-bold text-xl">
-                    {apiData.risk.overall_risk_level}
-                  </span>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Risk Level</p>
-                  <p className="text-xl font-bold text-gray-900">
-                    {apiData.risk.overall_risk_score}/5.0
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Confidence: {Math.round(apiData.risk.confidence * 100)}%
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Remaining Life */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-lg font-semibold text-gray-800 mb-4">Remaining Life</h2>
-              <div className="flex items-center space-x-4">
-                <div className="w-14 h-14 rounded-lg bg-blue-100 flex items-center justify-center">
-                  <span className="text-blue-600 font-bold text-2xl">
-                    {Math.round(apiData.rul.rul_years)}
-                  </span>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Years Remaining</p>
-                  <p className="text-xl font-bold text-gray-900">
-                    {apiData.rul.rul_years.toFixed(1)}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    ({apiData.rul.percent_life_used.toFixed(1)}% used)
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Recommendation */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-lg font-semibold text-gray-800 mb-4">AI Recommendation</h2>
-              <div className="space-y-3">
-                <p className="text-sm font-medium text-gray-600">Recommended Action</p>
-                <p className="text-xl font-bold text-gray-900">
-                  {apiData.decision.recommended_intervention}
-                </p>
-                <div className="mt-2 p-3 bg-gray-50 rounded">
-                  <p className="text-sm text-gray-600">
-                    Score: {apiData.decision.optimal_intervention_score.toFixed(1)}/100
-                  </p>
-                </div>
-              </div>
+        {loading && !assetData && (
+          <div className="min-h-screen flex items-center justify-center bg-gray-50">
+            <div className="text-center">
+              <h2 className="text-2xl font-bold text-gray-900 mb-4">Loading Asset Data...</h2>
+              <p className="text-lg text-gray-500">Fetching real-time data from the Aegis backend</p>
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Detailed Sections */}
-        <div className="grid gap-8">
-          {/* Health Details */}
-          <section className="bg-white rounded-lg shadow">
-            <div className="px-6 py-4">
-              <h2 className="text-xl font-semibold text-gray-800 mb-4">Health Details</h2>
-            </div>
-            <div className="px-6 py-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <div className="bg-gray-50 p-4 rounded">
-                  <h3 className="text-sm font-medium text-gray-500 mb-2">Failure Probability</h3>
-                  <p className="text-lg font-bold text-gray-900">
-                    {(apiData.health.failure_probability * 100).toFixed(2)}%
-                  </p>
-                </div>
-                <div className="bg-gray-50 p-4 rounded">
-                  <h3 className="text-sm font-medium text-gray-500 mb-2">Degradation Type</h3>
-                  <p className="text-lg font-bold text-gray-900 text-capitalize">
-                    {apiData.health.degradation_type.replace(/_/g, ' ')}
-                  </p>
-                </div>
-                <div className="bg-gray-50 p-4 rounded">
-                  <h3 className="text-sm font-medium text-gray-500 mb-2">Anomaly Detected</h3>
-                  <p className="text-lg font-bold text-gray-900">
-                    {apiData.health.is_anomaly ? 'YES' : 'NO'}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </section>
+        {!loading && (
+          <>
+            {error && (
+              <section className="mb-6 rounded-lg border-l-4 border-yellow-500 bg-yellow-50 p-4">
+                <h2 className="text-sm font-semibold text-yellow-800">Warning</h2>
+                <p className="mt-1 text-sm text-yellow-700">{error}</p>
+              </section>
+            )}
 
-          {/* Risk Breakdown */}
-          <section className="bg-white rounded-lg shadow">
-            <div className="px-6 py-4">
-              <h2 className="text-xl font-semibold text-gray-800 mb-4">Risk Analysis</h2>
-            </div>
-            <div className="px-6 py-4">
-              <div className="space-y-4">
-                <div className="flex justify-between mb-2">
-                  <span className="text-sm font-medium text-gray-600">Risk Contributions:</span>
-                  <span className="text-sm font-medium text-gray-600">
-                    {Object.keys(apiData.risk.risk_contributions_percent)
-                      .map(key => `${key.charAt(0).toUpperCase() + key.slice(1)}: ${apiData.risk.risk_contributions_percent[key]}%`)
-                      .join(' • ')}
-                  </span>
-                </div>
-                <div className="space-y-2">
-                  {Object.entries(apiData.risk.risk_scores).map(([riskType, score]) => (
-                    <div key={riskType} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                      <span className="font-medium text-gray-700">
-                        {riskType.charAt(0).toUpperCase() + riskType.slice(1)} Risk
-                      </span>
-                      <span className="text-lg font-bold
-                        {getRiskScoreColor(score)}
-                      ">
-                        {score}/5.0
-                      </span>
+            <section className="mb-6 rounded-lg border-l-4 border-red-500 bg-red-50 p-4">
+              <h2 className="text-sm font-semibold text-red-800">HIGH PRIORITY ALERT</h2>
+              <p className="mt-1 text-sm text-red-700">Thermal stress detected. Reduce load and monitor winding temperature.</p>
+            </section>
+
+            <section className="grid grid-cols-3 gap-6">
+              {/* Left Column: Health Indicators */}
+              <article className="rounded-lg bg-white p-6 shadow w-full md:w-1/2 lg:w-full">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <h2 className="text-lg font-semibold text-gray-900">
+                      Asset {asset.assetId}: {selectedAsset?.name || asset.name}
+                    </h2>
+                    <div className="flex items-center gap-2">
+                      <RiskBadge value={asset.riskLevel} />
                     </div>
-                  ))}
-                </div>
-                {apiData.risk.primary_risk_drivers.length > 0 && (
-                  <div className="mt-4 p-3 bg-red-50 rounded">
-                    <h3 className="text-sm font-medium text-red-800 mb-2">Primary Risk Drivers</h3>
-                    <p className="text-sm text-red-600">
-                      {apiData.risk.primary_risk_drivers.map(driver =>
-                        driver.charAt(0).toUpperCase() + driver.slice(1).replace(/_/g, ' ')
-                      ).join(', ')}
-                    </p>
                   </div>
-                )}
-              </div>
-            </div>
-          </section>
+                  {selectedAsset && (
+                    <p className="text-sm text-gray-500">{selectedAsset.site} • {selectedAsset.transformer_type} • {selectedAsset.rating_mva} MVA</p>
+                  )}
 
-          {/* Recommendation Details */}
-          <section className="bg-white rounded-lg shadow">
-            <div className="px-6 py-4">
-              <h2 className="text-xl font-semibold text-gray-800 mb-4">Decision Analysis</h2>
-            </div>
-            <div className="px-6 py-4">
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-gray-800 mb-3">Intervention Scores</h3>
-                <div className="space-y-2">
-                  {Object.entries(apiData.decision.intervention_scores).map(([key, intervention]) => (
-                    <div key={key} className="p-4 rounded-lg
-                      {key === apiData.decision.recommended_intervention_key ? 'border-2 border-blue-500' : 'border'}">
-                      <div className="flex justify-between items-start mb-2">
-                        <h4 className="font-semibold text-gray-800">{intervention.name}</h4>
-                        <span className={`
-                          text-xs font-bold
-                          ${key === apiData.decision.recommended_intervention_key
-                            ? 'bg-blue-100 text-blue-800'
-                            : 'bg-gray-200 text-gray-600'
-                          }
-                        `}>
-                          {key === apiData.decision.recommended_intervention_key ? 'RECOMMENDED' : ''}
-                        </span>
+                  {/* Health Gauge */}
+                  <div className="space-y-2">
+                    <HealthGauge healthScore={asset.healthScore} size={140} />
+                  </div>
+
+                  {/* Key Metrics */}
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <MetricCard label="Failure Probability" value={`${asset.failureProbability}%`} />
+                    <MetricCard label="Degradation" value={asset.degradation} />
+                    <MetricCard label="Remaining Useful Life" value={`${asset.rulDays} days`} />
+                    <MetricCard label="Load" value={`${asset.load}%`} />
+                  </div>
+                </div>
+              </article>
+
+              {/* Middle Column: Operational Trends & Simulation */}
+              <article className="rounded-lg bg-white p-6 shadow w-full md:w-1/2 lg:w-full">
+                <div className="space-y-4">
+                  {/* Operating Conditions */}
+                  <div className="space-y-2">
+                    <h2 className="text-lg font-semibold text-gray-900">Current Operating Conditions</h2>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <MetricCard label="Winding Temp" value={`${asset.windingTemp} C`} />
+                      <MetricCard label="Oil Temp" value={`${asset.windingTemp - 10} C`} />
+                      <MetricCard label="Voltage" value={`${asset.voltage} V`} />
+                      <MetricCard label="Current" value={`${asset.current} A`} />
+                    </div>
+                  </div>
+
+                  {/* Telemetry Trends */}
+                  <TelemetryTrendsChart
+                    data={[
+                      { timestamp: '00:00', load: 65, oilTemp: 45, windingTemp: 60, vibration: 1.2 },
+                      { timestamp: '03:00', load: 58, oilTemp: 42, windingTemp: 55, vibration: 1.0 },
+                      { timestamp: '06:00', load: 70, oilTemp: 48, windingTemp: 65, vibration: 1.3 },
+                      { timestamp: '09:00', load: 82, oilTemp: 52, windingTemp: 72, vibration: 1.8 },
+                      { timestamp: '12:00', load: 89, oilTemp: 58, windingTemp: 78, vibration: 2.1 },
+                      { timestamp: '15:00', load: 76, oilTemp: 50, windingTemp: 68, vibration: 1.5 },
+                      { timestamp: '18:00', load: 68, oilTemp: 46, windingTemp: 62, vibration: 1.1 },
+                      { timestamp: '21:00', load: 60, oilTemp: 44, windingTemp: 58, vibration: 0.9 }
+                    ]}
+                  />
+                </div>
+              </article>
+
+              {/* Right Column: Analytics & Recommendations */}
+              <article className="rounded-lg bg-white p-6 shadow w-full md:w-1/2 lg:w-full">
+                <div className="space-y-4">
+                  {/* Baseline Simulation */}
+                  <div className="space-y-2">
+                    <h2 className="text-lg font-semibold text-gray-900">Baseline Simulation</h2>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span>Efficiency</span>
+                        <span>{asset.efficiency}%</span>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2 text-sm">
-                        <div>
-                          <span className="text-gray-500">Risk:</span>
-                          <span className="font-medium">{intervention.risk_score}/100</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Cost:</span>
-                          <span className="font-medium">${intervention.cost_score.toFixed(0)}</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Downtime:</span>
-                          <span className="font-medium">{intervention.downtime_score.toFixed(0)}h</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Life Impact:</span>
-                          <span className="font-medium">{intervention.life_impact_score}</span>x
-                        </div>
-                        <div className="col-span-2 mt-2 pt-2 bb b-gray-200">
-                          <span className="text-gray-600">Total Score:</span>
-                          <span className="font-bold text-lg">{intervention.total_score}/100</span>
-                        </div>
+                      <div className="flex justify-between text-sm">
+                        <span>Total losses</span>
+                        <span>{asset.losses} kW</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span>Risk level</span>
+                        <RiskBadge value={asset.riskLevel} />
                       </div>
                     </div>
-                  ))}
+                  </div>
+
+                  {/* Risk Factors Breakdown */}
+                  <div className="space-y-2">
+                    <RiskFactorsChart
+                      riskFactors={[
+                        { name: 'Thermal', value: 35, color: '#3b82f6' },
+                        { name: 'Electrical', value: 25, color: '#ef4444' },
+                        { name: 'Insulation', value: 20, color: '#f97316' },
+                        { name: 'Mechanical', value: 10, color: '#10b981' },
+                        { name: 'Aging', value: 10, color: '#8b5cf6' }
+                      ]}
+                    />
+                  </div>
+
+                  {/* RUL Indicator */}
+                  <div className="space-y-2">
+                    <RadialProgressBar
+                      progress={Math.min(100, Math.max(0, (asset.rulDays / 365) * 100))}
+                      label="Life Remaining"
+                      size={100}
+                    />
+                  </div>
+
+                  {/* AI Recommendation */}
+                  <div className="space-y-2">
+                    <h2 className="text-lg font-semibold text-gray-900">AI Recommendation</h2>
+                    <div className="mt-4 rounded-lg bg-blue-50 p-4">
+                      <p className="font-semibold text-blue-900">{asset.recommendation}</p>
+                      <p className="text-sm text-blue-800">Decision score: {asset.recommendedScore}</p>
+                    </div>
+                    <div className="mt-3 space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span>Cost</span>
+                        <span className="font-medium">${asset.cost.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Life impact</span>
+                        <span className="font-medium">+{asset.lifeImpact} days</span>
+                      </div>
+                    </div>
+                    <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-gray-700">
+                      {asset.reasoning.map((reason: string) => <li key={reason}>{reason}</li>)}
+                    </ul>
+                  </div>
                 </div>
-              </div>
-            </div>
-          </section>
-
-          {/* Explanation */}
-          <section className="bg-white rounded-lg shadow">
-            <div className="px-6 py-4">
-              <h2 className="text-xl font-semibold text-gray-800 mb-4">AI Explanation</h2>
-            </div>
-            <div className="px-6 py-4">
-              <div className="space-y-3">
-                {apiData.decision.explanation.map((line, index) => (
-                  <p key={index} className="text-sm text-gray-700 leading-relaxed">
-                    {line}
-                  </p>
-                ))}
-              </div>
-            </div>
-          </section>
-        </div>
+              </article>
+            </section>
+          </>
+        )}
       </main>
-
-      <footer className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <p className="text-center text-sm text-gray-500">
-            Aegis Platform • Powered by AI Decision Intelligence •
-            <a href="http://localhost:8000/docs" className="text-blue-600 hover:underline">
-              API Documentation
-            </a>
-          </p>
-        </div>
-      </footer>
     </div>
   );
-}
-
-// Helper functions
-function getHealthStatus(score: number): string {
-  if (score >= 85) return "Excellent";
-  if (score >= 70) return "Good";
-  if (score >= 55) return "Fair";
-  if (score >= 40) return "Poor";
-  return "Critical";
-}
-
-function getRiskLevelColor(level: string): string {
-  switch (level) {
-    case 'MINIMAL': return 'bg-green-100';
-    case 'LOW': return 'bg-yellow-50';
-    case 'MEDIUM': return 'bg-orange-50';
-    case 'HIGH': return 'bg-red-50';
-    case 'CRITICAL': return 'bg-red-100';
-    default: return 'bg-gray-100';
-  }
-}
-
-function getRiskScoreColor(score: number): string {
-  if (score >= 4) return 'text-red-600';
-  if (score >= 3) return 'text-orange-600';
-  if (score >= 2) return 'text-yellow-600';
-  return 'text-green-600';
 }

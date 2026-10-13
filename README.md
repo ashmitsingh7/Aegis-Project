@@ -22,43 +22,63 @@ aegis/
 │   │   ├── rul_model.py
 │   │   └── risk_model.py
 │   ├── digital_twin/     # Transformer simulation
-│   │   └── transformer.py
+│   │   └── enhanced_transformer.py
 │   ├── decision_engine/  # Action evaluation and optimization
 │   │   └── optimizer.py
 │   └── simulator/        # Telemetry simulation
 │       └── telemetry.py
 ├── frontend/
-│   ├── dashboard/        # Command center view
-│   ├── asset/            # Asset intelligence page
-│   ├── decisions/        # Decision center page
-│   └── digital-twin/     # Digital twin controls
-├── data/
-│   ├── telemetry/        # Sensor data storage
-│   └── maintenance/      # Maintenance history
-├── docs/
-│   ├── architecture.md   # Detailed system architecture
-│   ├── api.md            # API contract specifications
-│   └── demo-script.md    # Demo presentation guide
-└── README.md
+│   ├── app/              # Next.js 14 App Router pages
+│   │   ├── page.tsx              # Dashboard
+│   │   ├── asset/[assetId]/      # Asset detail
+│   │   ├── decision/             # Decision center
+│   │   ├── simulation/           # Digital twin simulation
+│   │   ├── analytics/            # Advanced analytics
+│   │   ├── demo/                 # Demo mode
+│   │   ├── degradation/          # Degradation scenario
+│   │   └── validation/           # Validation testing
+│   ├── components/       # React components
+│   │   ├── visualizations/       # Charts (HealthGauge, RiskFactors, etc.)
+│   │   └── analytics/            # Analytics panels
+│   ├── lib/              # Services & utilities
+│   │   ├── apiService.ts         # Backend API client
+│   │   └── analytics/            # Advanced analytics service
+│   └── types/            # TypeScript types
+├── docs/                 # Documentation
+│   ├── ADVANCED_FEATURES_SUMMARY.md
+│   ├── Aegis_BUILD_AND_RUN_GUIDE.md
+│   ├── DEMONSTRATION_SUMMARY.md
+│   ├── IMPLEMENTATION_SUMMARY.md
+│   ├── IMPROVEMENTS_SUMMARY.md
+│   ├── QUICK_START.md
+│   └── USAGE_GUIDE_ADVANCED_FEATURES.md
+└── start_aegis.py        # Startup script (backend + frontend)
 ```
 
-## Getting Started
+## Quick Start
 
-See [BUILD_LOG.md](BUILD_LOG.md) for development progress tracking.
+```bash
+# Option 1: Startup script (recommended)
+python start_aegis.py
 
-### Improved Prototype Features
+# Option 2: Manual
+cd backend && pip install -r requirements.txt && python main.py
+cd frontend && npm install && npm run dev
+```
 
-This version includes enhancements to make the prototype more interactive and realistic:
+**Access Points:**
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8000
+- API Docs: http://localhost:8000/docs
 
-1. **Frontend-Backend Integration**: The frontend now makes real API calls to the backend instead of using static mock data
-2. **API Service Layer**: A dedicated service layer handles all communication with the backend endpoints
-3. **Real-time Data Display**: Pages update with actual data from the AI models when the backend is running
-4. **Loading States and Error Handling**: Improved user experience with loading indicators and fallback to static data when needed
-5. **Advanced Visualization**: Interactive charts, graphs, and visual indicators for instant insight (Upgrade #8)
-6. **Advanced Analytics**: Root cause analysis, what-if scenario planning, and optimization engines (Upgrade #10)
+## Platform Features
 
-To experience the real-time features, ensure the backend is running and properly configured with all dependencies.
-The advanced features are accessible via the new Analytics section in the navigation menu.
+1. **Dashboard** - Real-time asset health, risk, telemetry trends, AI recommendation
+2. **Asset Detail** - Deep dive: health, risk, live telemetry, model explanations
+3. **Decision Center** - Compare interventions by risk/cost/downtime/life impact
+4. **Digital Twin** - What-if simulation: adjust load, ambient temp, cooling mode
+5. **Advanced Analytics** - Root cause analysis, what-if scenarios, optimization
+6. **Validation** - Test scenarios with accuracy metrics
 
 ## Team Structure
 
@@ -67,17 +87,16 @@ The advanced features are accessible via the new Analytics section in the naviga
 - **Person 3**: Decision Intelligence Engineer (Action evaluation, optimization)
 - **Person 4**: Full-Stack/Product Engineer (UI, integration, UX)
 
-## Development Phases
-
-1. **Days 1-2**: Foundation (parameters, schema, APIs, wireframes)
-2. **Days 3-5**: Parallel development (using mock data)
-3. **Days 6-8**: Integration (end-to-end pipeline)
-4. **Days 9-11**: Productization (realism, UI improvements)
-5. **Days 12-13**: Testing (5 scenarios validation)
-6. **Days 14-15**: Demo and pitch preparation
-
 ## Documentation
 
-- [Architecture Documentation](docs/architecture.md)
-- [Build Log](BUILD_LOG.md)
-- [Original Project Plan](Aegis_4_Person_Hackathon_Plan.md)# Aegis-Schneider-Hackathon
+See the [`docs/`](docs/) folder for detailed guides:
+
+| Document | Description |
+|----------|-------------|
+| [QUICK_START.md](docs/QUICK_START.md) | Quick start guide |
+| [Aegis_BUILD_AND_RUN_GUIDE.md](docs/Aegis_BUILD_AND_RUN_GUIDE.md) | Build and run instructions |
+| [USAGE_GUIDE_ADVANCED_FEATURES.md](docs/USAGE_GUIDE_ADVANCED_FEATURES.md) | Advanced features usage |
+| [IMPLEMENTATION_SUMMARY.md](docs/IMPLEMENTATION_SUMMARY.md) | Implementation details |
+| [IMPROVEMENTS_SUMMARY.md](docs/IMPROVEMENTS_SUMMARY.md) | Improvements overview |
+| [DEMONSTRATION_SUMMARY.md](docs/DEMONSTRATION_SUMMARY.md) | Demo guide |
+| [ADVANCED_FEATURES_SUMMARY.md](docs/ADVANCED_FEATURES_SUMMARY.md) | Advanced features summary |
