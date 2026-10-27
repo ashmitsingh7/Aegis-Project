@@ -62,7 +62,7 @@ aegis/
 python start_aegis.py
 
 # Option 2: Manual
-cd backend && pip install -r requirements.txt && python main.py
+cd backend && python -m venv venv && source venv/bin/activate && pip install -r requirements.txt && python main.py
 cd frontend && npm install && npm run dev
 ```
 
@@ -70,6 +70,15 @@ cd frontend && npm install && npm run dev
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:8000
 - API Docs: http://localhost:8000/docs
+
+## Setup
+
+```bash
+# Backend virtual environment
+python -m venv backend/venv
+source backend/venv/bin/activate  # On Windows: backend\venv\Scripts\activate
+pip install -r backend/requirements.txt
+```
 
 ## Platform Features
 
