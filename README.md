@@ -98,6 +98,7 @@ pip install -r backend/requirements.txt
 
 ## Documentation
 
+<<<<<<< HEAD
 See the [`docs/`](docs/) folder for detailed guides:
 
 | Document | Description |
@@ -109,3 +110,8 @@ See the [`docs/`](docs/) folder for detailed guides:
 | [IMPROVEMENTS_SUMMARY.md](docs/IMPROVEMENTS_SUMMARY.md) | Improvements overview |
 | [DEMONSTRATION_SUMMARY.md](docs/DEMONSTRATION_SUMMARY.md) | Demo guide |
 | [ADVANCED_FEATURES_SUMMARY.md](docs/ADVANCED_FEATURES_SUMMARY.md) | Advanced features summary |
+=======
+- [Architecture Documentation](docs/architecture.md)
+- [Build Log](BUILD_LOG.md)
+- [Original Project Plan](Aegis_Individual_Project_Plan.md)# Aegis-Individual Project
+>>>>>>> ff58531 (Rename hackathon references to individual project)
