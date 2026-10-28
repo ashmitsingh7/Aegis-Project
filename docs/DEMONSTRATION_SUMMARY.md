@@ -36,7 +36,7 @@ The Aegis AI-powered decision intelligence platform for critical electrical infr
   - `/docs/architecture.md` - Detailed system architecture
   - `/docs/api.md` - API contract specifications
   - `/BUILD_LOG.md` - Development progress tracking
-  - `/Aegis_4_Person_Hackathon_Plan.md` - Original project plan
+  - `/Aegis_Individual_Project_Plan.md` - Original project plan
   - `/README.md` - Project overview and getting started
   - `/demo_start.txt` - Demo scenario instructions
 
